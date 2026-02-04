@@ -20,8 +20,7 @@ keys/
 .playwright-mcp/
 
 # 本地测试文件
-5线程运行TurnstileSolver.bat
-TurnstileSolver.bat
+*.bat
 api_solver.py
 browser_configs.py
 db_results.py

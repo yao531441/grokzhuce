@@ -14,7 +14,7 @@
 ## 依赖
 
 - [freemail](https://github.com/user/freemail) - 临时邮箱服务（需自行部署）
-- Turnstile Solver - 验证码解决方案
+- Turnstile Solver - 内置验证码解决方案
 
 ## 安装
 
@@ -39,6 +39,20 @@ cp .env.example .env
 | YESCAPTCHA_KEY | YesCaptcha API Key（可选，不填使用本地 Solver） |
 
 ## 使用
+
+### 1. 启动 Turnstile Solver
+
+双击运行 `TurnstileSolver.bat` 或执行：
+
+```bash
+python api_solver.py --browser_type camoufox --thread 5 --debug
+```
+
+等待 Solver 启动完成（监听 `http://127.0.0.1:5072`）
+
+### 2. 运行注册程序
+
+新开一个终端，运行：
 
 ```bash
 python grok.py
@@ -71,5 +85,5 @@ Grok 注册机
 ## 注意事项
 
 - 需要自行部署 freemail 临时邮箱服务
-- 需要 Turnstile Solver（本地或 YesCaptcha）
+- 运行前必须先启动 Turnstile Solver
 - 仅供学习研究使用

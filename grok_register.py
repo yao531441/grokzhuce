@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 from playwright.sync_api import sync_playwright, Page, Browser, BrowserContext
-from playwright_stealth import stealth_sync
+from playwright_stealth import Stealth
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -120,8 +120,9 @@ class GrokRegister:
         # 创建页面
         self.page = self.context.new_page()
 
-        # 应用 stealth 插件
-        stealth_sync(self.page)
+        # 应用 stealth 插件（新版 API）
+        stealth = Stealth()
+        stealth.apply_stealth_sync(self.page)
 
         console.print(f"[green]✓[/green] 浏览器启动成功 (headless={self.headless})")
 
@@ -245,7 +246,18 @@ class GrokRegister:
                 return False
             console.print(f"[green]✓[/green] 邮箱创建成功: {email}")
 
-            # 4. 填写邮箱并发送验证码
+            # 4. 点击 "Sign up with email" 按钮
+            console.print("[blue]点击 Sign up with email 按钮...[/blue]")
+            sign_up_email_btn = self.page.locator(
+                'button:has-text("Sign up with email")'
+            ).first
+            if sign_up_email_btn.count() > 0:
+                sign_up_email_btn.click()
+                console.print("[green]✓[/green] 已点击 Sign up with email")
+                # 等待邮箱输入框出现
+                self.page.wait_for_selector('input[type="email"]', timeout=10000)
+
+            # 5. 填写邮箱并发送验证码
             console.print("[blue]填写邮箱并发送验证码...[/blue]")
             email_input = self.page.locator('input[type="email"]').first
             email_input.fill(email)

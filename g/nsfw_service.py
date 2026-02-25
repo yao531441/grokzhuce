@@ -1,8 +1,24 @@
 from __future__ import annotations
 
+import os
 from typing import Optional, Dict, Any
 
 from curl_cffi import requests
+from dotenv import load_dotenv
+
+# 加载 .env 文件
+load_dotenv()
+
+# 从 .env 获取代理配置（第一优先级）
+HTTP_PROXY = os.getenv('HTTP_PROXY', '')
+HTTPS_PROXY = os.getenv('HTTPS_PROXY', '')
+
+# 构建代理字典
+PROXIES = {}
+if HTTP_PROXY:
+    PROXIES['http'] = HTTP_PROXY
+if HTTPS_PROXY:
+    PROXIES['https'] = HTTPS_PROXY
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -88,6 +104,7 @@ class NsfwSettingsService:
                 data=data,
                 impersonate=impersonate or "chrome120",
                 timeout=timeout,
+                proxies=PROXIES if PROXIES else None,
             )
             hex_reply = response.content.hex()
             grpc_status = response.headers.get("grpc-status")
@@ -152,6 +169,7 @@ class NsfwSettingsService:
                 data=data,
                 impersonate=impersonate,
                 timeout=timeout,
+                proxies=PROXIES if PROXIES else None,
             )
             return {
                 "ok": response.status_code == 200,

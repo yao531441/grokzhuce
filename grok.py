@@ -1,11 +1,34 @@
-import os, json, random, string, time, re, struct
+import os
+import json
+import random
+import string
+import time
+import re
+import struct
 import threading
 import concurrent.futures
 from urllib.parse import urljoin, urlparse
 from curl_cffi import requests
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
 from g import EmailService, TurnstileService, UserAgreementService, NsfwSettingsService
+
+# 加载 .env 文件
+load_dotenv()
+
+# 从 .env 获取代理配置（第一优先级）
+HTTP_PROXY = os.getenv('HTTP_PROXY', '')
+HTTPS_PROXY = os.getenv('HTTPS_PROXY', '')
+
+# 构建代理字典
+PROXIES = {}
+if HTTP_PROXY:
+    PROXIES['http'] = HTTP_PROXY
+    print(f"[+] 从 .env 加载 HTTP 代理: {HTTP_PROXY}")
+if HTTPS_PROXY:
+    PROXIES['https'] = HTTPS_PROXY
+    print(f"[+] 从 .env 加载 HTTPS 代理: {HTTPS_PROXY}")
 
 # 基础配置
 site_url = "https://accounts.x.ai"
@@ -38,10 +61,6 @@ def get_random_chrome_profile():
     return profile["impersonate"], ua
 
 
-PROXIES = {
-    # "http": "http://127.0.0.1:10808",
-    # "https": "http://127.0.0.1:10808"
-}
 
 # 动态获取的全局变量
 config = {

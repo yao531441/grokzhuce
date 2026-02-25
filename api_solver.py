@@ -1,5 +1,6 @@
 import os
 import sys
+from dotenv import load_dotenv
 import time
 import uuid
 import random
@@ -59,6 +60,10 @@ handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(handler)
 
 
+# 加载 .env 文件
+load_dotenv()
+
+
 class TurnstileAPIServer:
 
     def __init__(self, headless: bool, useragent: Optional[str], debug: bool, browser_type: str, thread: int, proxy_support: bool, use_random_config: bool = False, browser_name: Optional[str] = None, browser_version: Optional[str] = None):
@@ -98,6 +103,14 @@ class TurnstileAPIServer:
         self.browser_args = []
         if self.useragent:
             self.browser_args.append(f"--user-agent={self.useragent}")
+
+        # 从 .env 获取代理配置（第一优先级）
+        self.env_http_proxy = os.getenv('HTTP_PROXY', '')
+        self.env_https_proxy = os.getenv('HTTPS_PROXY', '')
+        if self.env_http_proxy:
+            logger.info(f"[+] 从 .env 加载 HTTP 代理: {self.env_http_proxy}")
+        if self.env_https_proxy:
+            logger.info(f"[+] 从 .env 加载 HTTPS 代理: {self.env_https_proxy}")
 
         self._setup_routes()
 
@@ -579,7 +592,19 @@ class TurnstileAPIServer:
             if self.debug:
                 logger.warning(f"Browser {index}: Cannot check browser state: {str(e)}")
 
-        if self.proxy_support:
+        # 优先从 .env 获取代理（第一优先级）
+        proxy = None
+        if self.env_http_proxy or self.env_https_proxy:
+            # 使用 .env 中的代理
+            env_proxies = []
+            if self.env_http_proxy:
+                env_proxies.append(self.env_http_proxy)
+            if self.env_https_proxy:
+                env_proxies.append(self.env_https_proxy)
+            proxy = random.choice(env_proxies) if env_proxies else None
+            if self.debug and proxy:
+                logger.debug(f"Browser {index}: Using .env proxy: {proxy}")
+        elif self.proxy_support:
             proxy_file_path = os.path.join(os.getcwd(), "proxies.txt")
 
             try:

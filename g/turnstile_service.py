@@ -8,6 +8,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# 从 .env 获取代理配置（第一优先级）
+HTTP_PROXY = os.getenv('HTTP_PROXY', '')
+HTTPS_PROXY = os.getenv('HTTPS_PROXY', '')
+
+# 构建代理字典
+PROXIES = {}
+if HTTP_PROXY:
+    PROXIES['http'] = HTTP_PROXY
+if HTTPS_PROXY:
+    PROXIES['https'] = HTTPS_PROXY
+
 
 class TurnstileService:
     """Turnstile验证服务类"""
@@ -19,6 +30,7 @@ class TurnstileService:
         self.yescaptcha_key = os.getenv('YESCAPTCHA_KEY', '').strip()
         self.solver_url = solver_url
         self.yescaptcha_api = "https://api.yescaptcha.com"
+        self.proxies = PROXIES if PROXIES else None
 
     def create_task(self, siteurl, sitekey):
         """
@@ -35,7 +47,7 @@ class TurnstileService:
                     "websiteKey": sitekey
                 }
             }
-            response = requests.post(url, json=payload)
+            response = requests.post(url, json=payload, proxies=self.proxies)
             response.raise_for_status()
             data = response.json()
             if data.get('errorId') != 0:
@@ -44,7 +56,7 @@ class TurnstileService:
         else:
             # 使用本地 Turnstile Solver
             url = f"{self.solver_url}/turnstile?url={siteurl}&sitekey={sitekey}"
-            response = requests.get(url)
+            response = requests.get(url, proxies=self.proxies)
             response.raise_for_status()
             return response.json()['taskId']
 
@@ -63,7 +75,7 @@ class TurnstileService:
                         "clientKey": self.yescaptcha_key,
                         "taskId": task_id
                     }
-                    response = requests.post(url, json=payload)
+                    response = requests.post(url, json=payload, proxies=self.proxies)
                     response.raise_for_status()
                     data = response.json()
 
@@ -86,7 +98,7 @@ class TurnstileService:
                 else:
                     # 使用本地 Turnstile Solver
                     url = f"{self.solver_url}/result?id={task_id}"
-                    response = requests.get(url)
+                    response = requests.get(url, proxies=self.proxies)
                     response.raise_for_status()
                     data = response.json()
                     captcha = data.get('solution', {}).get('token', None)

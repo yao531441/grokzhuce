@@ -3,7 +3,7 @@
 import os
 import time
 import requests
-from dotenv import load_dotenv
+from dotenv import load_dotenv, get_key
 from urllib3.exceptions import InsecureRequestWarning
 
 # 禁用 SSL 警告
@@ -13,21 +13,24 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 class EmailService:
     def __init__(self):
         load_dotenv()
-        self.worker_domain = os.getenv("WORKER_DOMAIN")
-        self.freemail_token = os.getenv("FREEMAIL_TOKEN")
+        # 从 .env 文件直接读取（避免被系统环境变量覆盖）
+        env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+        self.worker_domain = get_key(env_path, "WORKER_DOMAIN")
+        self.freemail_token = get_key(env_path, "FREEMAIL_TOKEN")
         if not all([self.worker_domain, self.freemail_token]):
             raise ValueError("Missing: WORKER_DOMAIN or FREEMAIL_TOKEN")
         self.base_url = f"https://{self.worker_domain}"
         self.headers = {"Authorization": f"Bearer {self.freemail_token}"}
 
-        # 从环境变量获取代理配置
+        # 从 .env 文件获取代理配置
         self.proxies = self._get_proxies()
 
     def _get_proxies(self):
         """获取代理配置"""
-        # 优先使用环境变量中的代理配置
-        http_proxy = os.getenv("HTTP_PROXY") or os.getenv("http_proxy")
-        https_proxy = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+        # 从 .env 文件直接读取（避免被系统环境变量覆盖）
+        env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+        http_proxy = get_key(env_path, "HTTP_PROXY")
+        https_proxy = get_key(env_path, "HTTPS_PROXY")
 
         # 如果没有设置代理，检查 WPAD 配置
         if not http_proxy and not https_proxy:

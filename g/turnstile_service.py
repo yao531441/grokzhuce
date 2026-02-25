@@ -1,23 +1,25 @@
 """
 Turnstile验证服务类
 """
+
 import os
 import time
 import requests
-from dotenv import load_dotenv
+from dotenv import load_dotenv, get_key
 
 load_dotenv()
 
-# 从 .env 获取代理配置（第一优先级）
-HTTP_PROXY = os.getenv('HTTP_PROXY', '')
-HTTPS_PROXY = os.getenv('HTTPS_PROXY', '')
+# 从 .env 文件直接读取（避免被系统环境变量覆盖）
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+HTTP_PROXY = get_key(env_path, "HTTP_PROXY") or ""
+HTTPS_PROXY = get_key(env_path, "HTTPS_PROXY") or ""
 
 # 构建代理字典
 PROXIES = {}
 if HTTP_PROXY:
-    PROXIES['http'] = HTTP_PROXY
+    PROXIES["http"] = HTTP_PROXY
 if HTTPS_PROXY:
-    PROXIES['https'] = HTTPS_PROXY
+    PROXIES["https"] = HTTPS_PROXY
 
 
 class TurnstileService:
@@ -27,7 +29,7 @@ class TurnstileService:
         """
         初始化Turnstile服务
         """
-        self.yescaptcha_key = os.getenv('YESCAPTCHA_KEY', '').strip()
+        self.yescaptcha_key = os.getenv("YESCAPTCHA_KEY", "").strip()
         self.solver_url = solver_url
         self.yescaptcha_api = "https://api.yescaptcha.com"
         self.proxies = PROXIES if PROXIES else None
@@ -44,21 +46,23 @@ class TurnstileService:
                 "task": {
                     "type": "TurnstileTaskProxyless",
                     "websiteURL": siteurl,
-                    "websiteKey": sitekey
-                }
+                    "websiteKey": sitekey,
+                },
             }
             response = requests.post(url, json=payload, proxies=self.proxies)
             response.raise_for_status()
             data = response.json()
-            if data.get('errorId') != 0:
-                raise Exception(f"YesCaptcha创建任务失败: {data.get('errorDescription')}")
-            return data['taskId']
+            if data.get("errorId") != 0:
+                raise Exception(
+                    f"YesCaptcha创建任务失败: {data.get('errorDescription')}"
+                )
+            return data["taskId"]
         else:
             # 使用本地 Turnstile Solver
             url = f"{self.solver_url}/turnstile?url={siteurl}&sitekey={sitekey}"
             response = requests.get(url, proxies=self.proxies)
             response.raise_for_status()
-            return response.json()['taskId']
+            return response.json()["taskId"]
 
     def get_response(self, task_id, max_retries=30, initial_delay=5, retry_delay=2):
         """
@@ -71,26 +75,23 @@ class TurnstileService:
                 if self.yescaptcha_key:
                     # 使用 YesCaptcha API
                     url = f"{self.yescaptcha_api}/getTaskResult"
-                    payload = {
-                        "clientKey": self.yescaptcha_key,
-                        "taskId": task_id
-                    }
+                    payload = {"clientKey": self.yescaptcha_key, "taskId": task_id}
                     response = requests.post(url, json=payload, proxies=self.proxies)
                     response.raise_for_status()
                     data = response.json()
 
-                    if data.get('errorId') != 0:
+                    if data.get("errorId") != 0:
                         print(f"YesCaptcha获取结果失败: {data.get('errorDescription')}")
                         return None
 
-                    if data.get('status') == 'ready':
-                        token = data.get('solution', {}).get('token')
+                    if data.get("status") == "ready":
+                        token = data.get("solution", {}).get("token")
                         if token:
                             return token
                         else:
                             print("YesCaptcha返回结果中没有token")
                             return None
-                    elif data.get('status') == 'processing':
+                    elif data.get("status") == "processing":
                         time.sleep(retry_delay)
                     else:
                         print(f"YesCaptcha未知状态: {data.get('status')}")
@@ -101,7 +102,7 @@ class TurnstileService:
                     response = requests.get(url, proxies=self.proxies)
                     response.raise_for_status()
                     data = response.json()
-                    captcha = data.get('solution', {}).get('token', None)
+                    captcha = data.get("solution", {}).get("token", None)
 
                     if captcha:
                         if captcha != "CAPTCHA_FAIL":

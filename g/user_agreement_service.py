@@ -4,21 +4,22 @@ import os
 from typing import Optional, Dict, Any
 
 from curl_cffi import requests
-from dotenv import load_dotenv
+from dotenv import load_dotenv, get_key
 
 # 加载 .env 文件
 load_dotenv()
 
-# 从 .env 获取代理配置（第一优先级）
-HTTP_PROXY = os.getenv('HTTP_PROXY', '')
-HTTPS_PROXY = os.getenv('HTTPS_PROXY', '')
+# 从 .env 文件直接读取（避免被系统环境变量覆盖）
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+HTTP_PROXY = get_key(env_path, "HTTP_PROXY") or ""
+HTTPS_PROXY = get_key(env_path, "HTTPS_PROXY") or ""
 
 # 构建代理字典
 PROXIES = {}
 if HTTP_PROXY:
-    PROXIES['http'] = HTTP_PROXY
+    PROXIES["http"] = HTTP_PROXY
 if HTTPS_PROXY:
-    PROXIES['https'] = HTTPS_PROXY
+    PROXIES["https"] = HTTPS_PROXY
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -75,7 +76,9 @@ class UserAgreementService:
             "sso": sso,
             "sso-rw": sso_rw,
         }
-        clearance = (cf_clearance if cf_clearance is not None else self.cf_clearance).strip()
+        clearance = (
+            cf_clearance if cf_clearance is not None else self.cf_clearance
+        ).strip()
         if clearance:
             cookies["cf_clearance"] = clearance
 

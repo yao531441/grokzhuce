@@ -7,6 +7,7 @@ import re
 import struct
 import threading
 import concurrent.futures
+import traceback
 from urllib.parse import urljoin, urlparse
 from curl_cffi import requests
 from bs4 import BeautifulSoup
@@ -14,20 +15,38 @@ from dotenv import load_dotenv
 
 from g import EmailService, TurnstileService, UserAgreementService, NsfwSettingsService
 
+
+def print_error(
+    context: str, exception: Exception | None = None, details: dict | None = None
+):
+    """统一错误输出格式"""
+    print(f"\n{'=' * 60}")
+    print(f"[-] 错误位置: {context}")
+    if exception:
+        print(f"[-] 异常类型: {type(exception).__name__}")
+        print(f"[-] 异常信息: {str(exception)}")
+    if details:
+        for key, value in details.items():
+            print(f"[-] {key}: {value}")
+    print(f"[-] 堆栈跟踪:")
+    traceback.print_exc()
+    print(f"{'=' * 60}\n")
+
+
 # 加载 .env 文件
 load_dotenv()
 
 # 从 .env 获取代理配置（第一优先级）
-HTTP_PROXY = os.getenv('HTTP_PROXY', '')
-HTTPS_PROXY = os.getenv('HTTPS_PROXY', '')
+HTTP_PROXY = os.getenv("HTTP_PROXY", "")
+HTTPS_PROXY = os.getenv("HTTPS_PROXY", "")
 
 # 构建代理字典
 PROXIES = {}
 if HTTP_PROXY:
-    PROXIES['http'] = HTTP_PROXY
+    PROXIES["http"] = HTTP_PROXY
     print(f"[+] 从 .env 加载 HTTP 代理: {HTTP_PROXY}")
 if HTTPS_PROXY:
-    PROXIES['https'] = HTTPS_PROXY
+    PROXIES["https"] = HTTPS_PROXY
     print(f"[+] 从 .env 加载 HTTPS 代理: {HTTPS_PROXY}")
 
 # 基础配置
@@ -59,7 +78,6 @@ def get_random_chrome_profile():
             f"Chrome/{profile['version']} Safari/537.36"
         )
     return profile["impersonate"], ua
-
 
 
 # 动态获取的全局变量
@@ -125,12 +143,20 @@ def send_email_code_grpc(session, email):
         "referer": f"{site_url}/sign-up?redirect=grok-com",
     }
     try:
-        # print(f"[debug] {email} 正在发送验证码请求...")
         res = session.post(url, data=data, headers=headers, timeout=15)
-        # print(f"[debug] {email} 请求结束，状态码: {res.status_code}")
-        return res.status_code == 200
+        if res.status_code != 200:
+            print_error(
+                f"发送验证码失败: {email}",
+                details={
+                    "状态码": res.status_code,
+                    "响应头": dict(res.headers),
+                    "响应内容前200字符": res.text[:200] if res.text else "空",
+                },
+            )
+            return False
+        return True
     except Exception as e:
-        print(f"[-] {email} 发送验证码异常: {e}")
+        print_error(f"发送验证码异常: {email}", e, {"URL": url})
         return False
 
 
@@ -146,10 +172,24 @@ def verify_email_code_grpc(session, email, code):
     }
     try:
         res = session.post(url, data=data, headers=headers, timeout=15)
-        # print(f"[debug] {email} 验证响应状态: {res.status_code}, 内容长度: {len(res.content)}")
-        return res.status_code == 200
+        if res.status_code != 200:
+            print_error(
+                f"验证验证码失败: {email}",
+                details={
+                    "状态码": res.status_code,
+                    "验证码": code[:3] + "***" if code else "空",
+                    "响应头": dict(res.headers),
+                    "响应内容前200字符": res.text[:200] if res.text else "空",
+                },
+            )
+            return False
+        return True
     except Exception as e:
-        print(f"[-] {email} 验证验证码异常: {e}")
+        print_error(
+            f"验证验证码异常: {email}",
+            e,
+            {"URL": url, "验证码": code[:3] + "***" if code else "空"},
+        )
         return False
 
 
@@ -157,13 +197,33 @@ def register_single_thread():
     # 错峰启动，防止瞬时并发过高
     time.sleep(random.uniform(0, 5))
 
+    email_service = None
+    turnstile_service = None
+    user_agreement_service = None
+    nsfw_service = None
+
     try:
         email_service = EmailService()
+    except Exception as e:
+        print_error("EmailService初始化失败", e)
+        return
+
+    try:
         turnstile_service = TurnstileService()
+    except Exception as e:
+        print_error("TurnstileService初始化失败", e)
+        return
+
+    try:
         user_agreement_service = UserAgreementService()
+    except Exception as e:
+        print_error("UserAgreementService初始化失败", e)
+        return
+
+    try:
         nsfw_service = NsfwSettingsService()
     except Exception as e:
-        print(f"[-] 服务初始化失败: {e}")
+        print_error("NsfwSettingsService初始化失败", e)
         return
 
     # 修正：直接从 config 获取
@@ -222,10 +282,18 @@ def register_single_thread():
                     continue
 
                 # Step 2: 获取验证码
-                verify_code = email_service.fetch_verification_code(email)
+                try:
+                    verify_code = email_service.fetch_verification_code(email)
+                except Exception as e:
+                    print_error(f"获取验证码异常: {email}", e)
+                    verify_code = None
+
                 if not verify_code:
-                    print(f"[-] {email} 获取验证码失败")
-                    email_service.delete_email(email)
+                    print(f"[-] {email} 获取验证码失败（返回空或异常）")
+                    try:
+                        email_service.delete_email(email)
+                    except Exception as del_e:
+                        print_error(f"删除邮箱失败: {email}", del_e)
                     current_email = None
                     continue
 
@@ -242,10 +310,16 @@ def register_single_thread():
                         email_service.delete_email(email)
                         current_email = None
                         return
-                    task_id = turnstile_service.create_task(
-                        site_url, config["site_key"]
-                    )
-                    token = turnstile_service.get_response(task_id)
+                    try:
+                        task_id = turnstile_service.create_task(
+                            site_url, config["site_key"]
+                        )
+                        token = turnstile_service.get_response(task_id)
+                    except Exception as e:
+                        print_error(
+                            f"验证码服务异常: {email}", e, {"attempt": attempt + 1}
+                        )
+                        continue
 
                     if not token or token == "CAPTCHA_FAIL":
                         print(
@@ -278,43 +352,169 @@ def register_single_thread():
                         }
                     ]
 
-                    with post_lock:
-                        res = session.post(
-                            f"{site_url}/sign-up", json=payload, headers=headers
+                    res = None
+                    try:
+                        with post_lock:
+                            res = session.post(
+                                f"{site_url}/sign-up", json=payload, headers=headers
+                            )
+                    except Exception as e:
+                        print_error(
+                            f"注册POST请求失败: {email}",
+                            e,
+                            {"URL": f"{site_url}/sign-up", "attempt": attempt + 1},
                         )
+                        time.sleep(3)
+                        continue
 
                     if res.status_code == 200:
                         match = re.search(
                             r'(https://[^" \s]+set-cookie\?q=[^:" \s]+)1:', res.text
                         )
                         if not match:
-                            print(f"[-] {email} 未找到set-cookie链接")
+                            print_error(
+                                f"未找到set-cookie链接: {email}",
+                                details={
+                                    "响应状态码": res.status_code,
+                                    "响应内容长度": len(res.text),
+                                    "响应内容前500字符": res.text[:500]
+                                    if res.text
+                                    else "空",
+                                },
+                            )
                             email_service.delete_email(email)
                             current_email = None
                             break
                         if match:
                             verify_url = match.group(1)
-                            session.get(verify_url, allow_redirects=True)
-                            sso = session.cookies.get("sso")
-                            sso_rw = session.cookies.get("sso-rw")
-                            if not sso:
-                                print(f"[-] {email} 未获取到sso cookie")
+                            try:
+                                verify_res = session.get(
+                                    verify_url, allow_redirects=True
+                                )
+                            except Exception as e:
+                                print_error(
+                                    f"验证URL访问失败: {email}",
+                                    e,
+                                    {"verify_url": verify_url[:50] + "..."},
+                                )
                                 email_service.delete_email(email)
                                 current_email = None
                                 break
 
-                            tos_result = user_agreement_service.accept_tos_version(
-                                sso=sso,
-                                sso_rw=sso_rw or "",
-                                impersonate=impersonate_fingerprint,
-                                user_agent=account_user_agent,
-                            )
-                            tos_hex = tos_result.get("hex_reply") or ""
-                            if not tos_result.get("ok") or not tos_hex:
-                                print(f"[-] {email} TOS接受失败: {tos_result}")
+                            sso = session.cookies.get("sso")
+                            sso_rw = session.cookies.get("sso-rw")
+                            if not sso:
+                                print_error(
+                                    f"未获取到SSO cookie: {email}",
+                                    details={
+                                        "所有cookies": dict(session.cookies),
+                                        "verify_url": verify_url[:50] + "...",
+                                        "验证响应状态": verify_res.status_code
+                                        if "verify_res" in dir()
+                                        else "未知",
+                                    },
+                                )
                                 email_service.delete_email(email)
                                 current_email = None
                                 break
+
+                            try:
+                                tos_result = user_agreement_service.accept_tos_version(
+                                    sso=sso,
+                                    sso_rw=sso_rw or "",
+                                    impersonate=impersonate_fingerprint,
+                                    user_agent=account_user_agent,
+                                )
+                                tos_hex = tos_result.get("hex_reply") or ""
+                                if not tos_result.get("ok") or not tos_hex:
+                                    print_error(
+                                        f"TOS接受失败: {email}",
+                                        details={
+                                            "TOS结果": tos_result,
+                                            "SSO前20字符": sso[:20] if sso else "空",
+                                        },
+                                    )
+                                    email_service.delete_email(email)
+                                    current_email = None
+                                    break
+                            except Exception as e:
+                                print_error(
+                                    f"TOS接受异常: {email}",
+                                    e,
+                                    {"SSO": sso[:20] if sso else "空"},
+                                )
+                                email_service.delete_email(email)
+                                current_email = None
+                                break
+
+                            try:
+                                nsfw_result = nsfw_service.enable_nsfw(
+                                    sso=sso,
+                                    sso_rw=sso_rw or "",
+                                    impersonate=impersonate_fingerprint,
+                                    user_agent=account_user_agent,
+                                )
+                                nsfw_hex = nsfw_result.get("hex_reply") or ""
+                                if not nsfw_result.get("ok") or not nsfw_hex:
+                                    print_error(
+                                        f"NSFW设置失败: {email}",
+                                        details={
+                                            "NSFW结果": nsfw_result,
+                                            "SSO前20字符": sso[:20] if sso else "空",
+                                        },
+                                    )
+                                    email_service.delete_email(email)
+                                    current_email = None
+                                    break
+                            except Exception as e:
+                                print_error(
+                                    f"NSFW设置异常: {email}",
+                                    e,
+                                    {"SSO": sso[:20] if sso else "空"},
+                                )
+                                email_service.delete_email(email)
+                                current_email = None
+                                break
+
+                            # 立即进行二次验证 (enable_unhinged)
+                            try:
+                                unhinged_result = nsfw_service.enable_unhinged(sso)
+                                unhinged_ok = unhinged_result.get("ok", False)
+                            except Exception as e:
+                                print_error(f"Unhinged设置异常: {email}", e)
+                                unhinged_ok = False
+
+                            with file_lock:
+                                global success_count
+                                if success_count >= target_count:
+                                    if not stop_event.is_set():
+                                        stop_event.set()
+                                    print(f"[*] 已达到目标数量，删除邮箱: {email}")
+                                    email_service.delete_email(email)
+                                    current_email = None
+                                    break
+                                if not output_file:
+                                    print_error(
+                                        "输出文件未设置", details={"email": email}
+                                    )
+                                    email_service.delete_email(email)
+                                    current_email = None
+                                    break
+                                try:
+                                    with open(output_file, "a") as f:
+                                        f.write(sso + "\n")
+                                except Exception as write_err:
+                                    print_error(
+                                        f"写入文件失败: {email}",
+                                        write_err,
+                                        {
+                                            "输出文件": output_file,
+                                            "SSO": sso[:20] if sso else "空",
+                                        },
+                                    )
+                                    email_service.delete_email(email)
+                                    current_email = None
+                                    break
 
                             nsfw_result = nsfw_service.enable_nsfw(
                                 sso=sso,
@@ -330,11 +530,14 @@ def register_single_thread():
                                 break
 
                             # 立即进行二次验证 (enable_unhinged)
-                            unhinged_result = nsfw_service.enable_unhinged(sso)
-                            unhinged_ok = unhinged_result.get("ok", False)
+                            try:
+                                unhinged_result = nsfw_service.enable_unhinged(sso)
+                                unhinged_ok = unhinged_result.get("ok", False)
+                            except Exception as e:
+                                print_error(f"Unhinged设置异常: {email}", e)
+                                unhinged_ok = False
 
                             with file_lock:
-                                global success_count
                                 if success_count >= target_count:
                                     if not stop_event.is_set():
                                         stop_event.set()
@@ -376,13 +579,22 @@ def register_single_thread():
                     time.sleep(5)
 
         except Exception as e:
-            print(f"[-] 异常: {str(e)[:50]}")
+            print_error(
+                "注册流程主异常",
+                e,
+                {
+                    "当前邮箱": current_email[:20] + "..."
+                    if current_email and len(current_email) > 20
+                    else current_email,
+                    "线程状态": "已停止" if stop_event.is_set() else "运行中",
+                },
+            )
             # 异常时确保删除邮箱
             if current_email:
                 try:
                     email_service.delete_email(current_email)
-                except:
-                    pass
+                except Exception as del_e:
+                    print_error(f"异常时删除邮箱失败: {current_email}", del_e)
                 current_email = None
             time.sleep(5)
 
@@ -390,8 +602,19 @@ def register_single_thread():
 def main():
     print("=" * 60 + "\nGrok 注册机\n" + "=" * 60)
 
+    # 打印调试信息
+    print(f"[*] 调试信息:")
+    print(f"    - 目标站点: {site_url}")
+    print(f"    - 默认浏览器指纹: {DEFAULT_IMPERSONATE}")
+    print(f"    - 代理状态: {'已启用' if PROXIES else '未启用'}")
+    if PROXIES:
+        print(f"    - HTTP代理: {PROXIES.get('http', '未设置')[:30]}...")
+        print(f"    - HTTPS代理: {PROXIES.get('https', '未设置')[:30]}...")
+    print(f"    - 初始site_key: {config['site_key'][:20]}...")
+    print(f"    - 初始action_id: {config['action_id']}")
+
     # 1. 扫描参数
-    print("[*] 正在初始化...")
+    print("\n[*] 正在初始化...")
     start_url = f"{site_url}/sign-up"
     with requests.Session(impersonate=DEFAULT_IMPERSONATE) as s:
         try:
@@ -400,10 +623,16 @@ def main():
             key_match = re.search(r'sitekey":"(0x4[a-zA-Z0-9_-]+)"', html)
             if key_match:
                 config["site_key"] = key_match.group(1)
+                print(f"[+] 找到 site_key: {config['site_key'][:20]}...")
+            else:
+                print("[-] 警告: 未找到 site_key")
             # Tree
             tree_match = re.search(r'next-router-state-tree":"([^"]+)"', html)
             if tree_match:
                 config["state_tree"] = tree_match.group(1)
+                print(f"[+] 找到 state_tree: {config['state_tree'][:50]}...")
+            else:
+                print("[-] 警告: 未找到 state_tree")
             # Action ID
             soup = BeautifulSoup(html, "html.parser")
             js_urls = [
@@ -411,6 +640,7 @@ def main():
                 for script in soup.find_all("script", src=True)
                 if "_next/static" in script["src"]
             ]
+            print(f"[*] 扫描 {len(js_urls)} 个JS文件查找 Action ID...")
             for js_url in js_urls:
                 js_content = s.get(js_url).text
                 match = re.search(r"7f[a-fA-F0-9]{40}", js_content)
@@ -419,11 +649,29 @@ def main():
                     print(f"[+] Action ID: {config['action_id']}")
                     break
         except Exception as e:
-            print(f"[-] 初始化扫描失败: {e}")
+            print_error(
+                "初始化扫描失败",
+                e,
+                {
+                    "目标URL": start_url,
+                    "代理配置": "已启用" if PROXIES else "未启用",
+                    "当前配置": config,
+                },
+            )
             return
 
     if not config["action_id"]:
-        print("[-] 错误: 未找到 Action ID")
+        print_error(
+            "关键配置缺失",
+            details={
+                "错误": "未找到 Action ID",
+                "site_key": config.get("site_key", "未设置"),
+                "state_tree": config.get("state_tree", "未设置")[:50] + "..."
+                if config.get("state_tree")
+                else "未设置",
+                "已扫描JS文件数": len(js_urls) if "js_urls" in dir() else "未知",
+            },
+        )
         return
 
     # 2. 启动

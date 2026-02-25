@@ -1,4 +1,10 @@
+# 核心依赖
+playwright>=1.40.0
+playwright-stealth>=1.0.6
+python-dotenv>=1.0.0
+requests>=2.31.0
+rich>=13.7.0
+
+# 可选依赖（保留旧版兼容）
 curl_cffi
 beautifulsoup4
-python-dotenv
-requests

@@ -5,21 +5,11 @@ Turnstile验证服务类
 import os
 import time
 import requests
-from dotenv import load_dotenv, get_key
 
-load_dotenv()
+from .proxy_utils import get_proxies
 
-# 从 .env 文件直接读取（避免被系统环境变量覆盖）
-env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
-HTTP_PROXY = get_key(env_path, "HTTP_PROXY") or ""
-HTTPS_PROXY = get_key(env_path, "HTTPS_PROXY") or ""
-
-# 构建代理字典
-PROXIES = {}
-if HTTP_PROXY:
-    PROXIES["http"] = HTTP_PROXY
-if HTTPS_PROXY:
-    PROXIES["https"] = HTTPS_PROXY
+# 从 .env 文件加载代理配置
+PROXIES = get_proxies()
 
 
 class TurnstileService:

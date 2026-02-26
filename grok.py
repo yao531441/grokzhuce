@@ -11,9 +11,9 @@ import traceback
 from urllib.parse import urljoin, urlparse
 from curl_cffi import requests
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
 
 from g import EmailService, TurnstileService, UserAgreementService, NsfwSettingsService
+from g.proxy_utils import get_proxy_config
 
 
 def print_error(
@@ -33,20 +33,11 @@ def print_error(
     print(f"{'=' * 60}\n")
 
 
-# 加载 .env 文件
-load_dotenv()
-
-# 从 .env 获取代理配置（第一优先级）
-HTTP_PROXY = os.getenv("HTTP_PROXY", "")
-HTTPS_PROXY = os.getenv("HTTPS_PROXY", "")
-
-# 构建代理字典
-PROXIES = {}
+# 从 .env 获取代理配置（使用统一工具）
+HTTP_PROXY, HTTPS_PROXY, PROXIES = get_proxy_config()
 if HTTP_PROXY:
-    PROXIES["http"] = HTTP_PROXY
     print(f"[+] 从 .env 加载 HTTP 代理: {HTTP_PROXY}")
 if HTTPS_PROXY:
-    PROXIES["https"] = HTTPS_PROXY
     print(f"[+] 从 .env 加载 HTTPS 代理: {HTTPS_PROXY}")
 
 # 基础配置

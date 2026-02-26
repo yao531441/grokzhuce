@@ -3,8 +3,10 @@
 import os
 import time
 import requests
-from dotenv import load_dotenv, get_key
+from dotenv import get_key
 from urllib3.exceptions import InsecureRequestWarning
+
+from .proxy_utils import get_env_path
 
 # 禁用 SSL 警告
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -12,9 +14,8 @@ requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 class EmailService:
     def __init__(self):
-        load_dotenv()
         # 从 .env 文件直接读取（避免被系统环境变量覆盖）
-        env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+        env_path = get_env_path()
         self.worker_domain = get_key(env_path, "WORKER_DOMAIN")
         self.freemail_token = get_key(env_path, "FREEMAIL_TOKEN")
         if not all([self.worker_domain, self.freemail_token]):
@@ -28,7 +29,7 @@ class EmailService:
     def _get_proxies(self):
         """获取代理配置"""
         # 从 .env 文件直接读取（避免被系统环境变量覆盖）
-        env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+        env_path = get_env_path()
         http_proxy = get_key(env_path, "HTTP_PROXY")
         https_proxy = get_key(env_path, "HTTPS_PROXY")
 

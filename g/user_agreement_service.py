@@ -93,6 +93,7 @@ class UserAgreementService:
                 impersonate=impersonate or "chrome120",
                 timeout=timeout,
                 proxies=PROXIES if PROXIES else None,
+                verify=False,
             )
             hex_reply = response.content.hex()
             grpc_status = response.headers.get("grpc-status")

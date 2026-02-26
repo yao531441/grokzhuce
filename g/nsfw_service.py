@@ -96,6 +96,7 @@ class NsfwSettingsService:
                 impersonate=impersonate or "chrome120",
                 timeout=timeout,
                 proxies=PROXIES if PROXIES else None,
+                verify=False,
             )
             hex_reply = response.content.hex()
             grpc_status = response.headers.get("grpc-status")
@@ -161,6 +162,7 @@ class NsfwSettingsService:
                 impersonate=impersonate,
                 timeout=timeout,
                 proxies=PROXIES if PROXIES else None,
+                verify=False,
             )
             return {
                 "ok": response.status_code == 200,

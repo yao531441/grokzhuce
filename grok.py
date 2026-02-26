@@ -236,7 +236,7 @@ def register_single_thread():
                 return
             impersonate_fingerprint, account_user_agent = get_random_chrome_profile()
             with requests.Session(
-                impersonate=impersonate_fingerprint, proxies=PROXIES
+                impersonate=impersonate_fingerprint, proxies=PROXIES, verify=False
             ) as session:
                 # 预热连接
                 try:
